@@ -1,0 +1,23 @@
+{
+  "name": "mswjs-2-codemod",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/jscodeshift": "^0.11.6",
+    "jscodeshift": "^0.15.0",
+    "vitest": "^0.34.1"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "arrowParens": "always",
+    "trailingComma": "all"
+  }
+}
