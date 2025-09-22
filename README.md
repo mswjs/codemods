@@ -17,7 +17,7 @@ npx codemod@latest <codemod-name>
 For example:
 
 ```bash
-npx codemod@latest @codemod/msw-v2
+npx codemod@latest @mswjs/v2
 ```
 
 ### From source
