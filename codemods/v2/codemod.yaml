@@ -1,8 +1,8 @@
 schema_version: "1.0"
 
 name: "@mswjs/v2"
-version: "0.0.4"
-description: "Transform MSW v1 code to v2 patterns"
+version: "1.0.0"
+description: "Migrate your project from MSW v1 to v2"
 author: "Amirabbas Ghasemi <amirabbas08dev@gmail.com>"
 license: "MIT"
 workflow: "workflow.yaml"
