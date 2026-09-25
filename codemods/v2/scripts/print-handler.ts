@@ -1,45 +1,45 @@
-import type { SgNode } from "@codemod.com/jssg-types/main";
+import type { Edit, SgNode } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
 
-const print_handler = (root: SgNode<TSX, "program">): any[] => {
-  const edits: any[] = [];
+const print_handler = (root: SgNode<TSX, "program">): Array<Edit> => {
+	const edits: Array<Edit> = [];
 
-  const printHandlers = root.findAll({
-    rule: {
-      kind: "expression_statement",
-      has: {
-        kind: "call_expression",
-        has: {
-          kind: "member_expression",
-          pattern: "$WORKER.printHandlers",
-        },
-      },
-    },
-  });
+	const printHandlers = root.findAll({
+		rule: {
+			kind: "expression_statement",
+			has: {
+				kind: "call_expression",
+				has: {
+					kind: "member_expression",
+					pattern: "$WORKER.printHandlers",
+				},
+			},
+		},
+	});
 
-  printHandlers.forEach((print) => {
-    let printText = (print?.text() ?? "").replace(
-      "printHandlers()",
-      `forEach((handler) => {
+	printHandlers.forEach((print) => {
+		const printText = (print?.text() ?? "").replace(
+			"printHandlers()",
+			`forEach((handler) => {
         console.log(handler.info.header);
-      })`
-    );
-    edits.push(print.replace(printText));
-  });
+      })`,
+		);
+		edits.push(print.replace(printText));
+	});
 
-  return edits;
+	return edits;
 };
 
 async function transform(root: SgRoot<TSX>): Promise<string> {
-  let rootNode = root.root();
+	const rootNode = root.root();
 
-  let edits: any[] = [];
+	let edits: Array<Edit> = [];
 
-  edits = edits.concat(print_handler(rootNode));
+	edits = edits.concat(print_handler(rootNode));
 
-  let newSource = rootNode.commitEdits(edits);
-  return newSource;
+	const newSource = rootNode.commitEdits(edits);
+	return newSource;
 }
 
 export default transform;

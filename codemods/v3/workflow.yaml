@@ -1,0 +1,42 @@
+version: "1"
+
+nodes:
+  - id: apply-transforms
+    name: Apply AST Transformations for MSW v3 upgrade
+    type: automatic
+    steps:
+      - name: "React Native"
+        js-ast-grep:
+          js_file: scripts/react-native.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
+      - name: "Imports"
+        js-ast-grep:
+          js_file: scripts/imports.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
+      - name: "GraphQL link"
+        js-ast-grep:
+          js_file: scripts/graphql-link.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
+      - name: "Unhandled frame"
+        js-ast-grep:
+          js_file: scripts/unhandled-frame.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
+      - name: "WebSocket events"
+        js-ast-grep:
+          js_file: scripts/websocket-events.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
