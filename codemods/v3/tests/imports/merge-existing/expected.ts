@@ -1,4 +1,4 @@
-import { delay } from 'msw'
+import { delay } from 'msw/utils/delay'
 import { http, HttpResponse } from 'msw/http'
 import type { GraphQLQuery } from 'msw/graphql'
 import { type GraphQLVariables, graphql } from 'msw/graphql'

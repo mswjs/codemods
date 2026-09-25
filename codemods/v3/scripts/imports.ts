@@ -30,7 +30,7 @@ const EXPORT_RENAMES = new Map<string, string>([
 ]);
 
 /**
- * The recommended entrypoints for the protocol-specific exports of "msw".
+ * The recommended entrypoints for the protocol-specific exports and the utilities of "msw".
  * Everything not listed here stays imported from the root "msw" entrypoint.
  * The order of the entrypoints is the order of the produced import statements.
  */
@@ -103,6 +103,11 @@ const ENTRYPOINT_EXPORTS = new Map<string, Array<string>>([
 			"ServerSentEventMessage",
 		],
 	],
+	["msw/utils/delay", ["delay", "DelayMode"]],
+	["msw/utils/bypass", ["bypass", "BypassRequestInput"]],
+	["msw/utils/passthrough", ["passthrough"]],
+	["msw/utils/is-common-asset-request", ["isCommonAssetRequest"]],
+	["msw/utils/get-clean-url-string", ["getCleanUrlString"]],
 ]);
 
 const EXPORT_ENTRYPOINTS = new Map<string, string>();

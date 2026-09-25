@@ -1,6 +1,6 @@
-import { delay } from 'msw'
 import { http, HttpResponse } from 'msw/http'
 import { graphql } from 'msw/graphql'
+import { delay } from 'msw/utils/delay'
 import { setupServer } from 'msw/node'
 
 export const server = setupServer(

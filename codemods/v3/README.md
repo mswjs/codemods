@@ -1,12 +1,13 @@
 This codemod migrates your project from MSW v2 to v3, handling the following breaking changes:
 
 1. Moves the protocol-specific imports from `msw` to the recommended entrypoints: `msw/http`, `msw/graphql`, `msw/ws`, and `msw/sse`
-2. Rewrites the `msw/core/*` entrypoints to `msw/http`, `msw/graphql`, and `msw/ws`
-3. Renames `GraphQLLinkHandlers` to `GraphQLLink` and `cleanUrl` to `getCleanUrlString`
-4. Replaces the root-level `graphql.query()`, `graphql.mutation()`, and `graphql.operation()` with `graphql.link('*')`
-5. Renames the `onUnhandledRequest` option to `onUnhandledFrame` and migrates custom callbacks to the `{ frame, defaults }` signature
-6. Renames the `connection` life-cycle event to `websocket:connection`
-7. Replaces `msw/native` with `@msw/react-native` (`setupServer()` becomes the `network` object)
+2. Moves the utilities (`delay`, `bypass`, `passthrough`, `isCommonAssetRequest`, `getCleanUrlString`) from `msw` to their `msw/utils/*` entrypoints
+3. Rewrites the `msw/core/*` entrypoints to `msw/http`, `msw/graphql`, and `msw/ws`
+4. Renames `GraphQLLinkHandlers` to `GraphQLLink` and `cleanUrl` to `getCleanUrlString`
+5. Replaces the root-level `graphql.query()`, `graphql.mutation()`, and `graphql.operation()` with `graphql.link('*')`
+6. Renames the `onUnhandledRequest` option to `onUnhandledFrame` and migrates custom callbacks to the `{ frame, defaults }` signature
+7. Renames the `connection` life-cycle event to `websocket:connection`
+8. Replaces `msw/native` with `@msw/react-native` (`setupServer()` becomes the `network` object)
 
 ### Example
 
@@ -33,9 +34,9 @@ server.listen({
 
 ```ts
 // After
-import { delay } from 'msw'
 import { http, HttpResponse } from 'msw/http'
 import { graphql } from 'msw/graphql'
+import { delay } from 'msw/utils/delay'
 import { setupServer } from 'msw/node'
 import { HttpNetworkFrame } from 'msw/experimental'
 

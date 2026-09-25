@@ -1,11 +1,7 @@
-import { delay, bypass, passthrough, type PathParams } from "msw";
-import { setupServer } from "msw/node";
+import { matchRequestUrl, RequestHandler, type PathParams, type SharedOptions } from "msw";
 import { http } from "msw/http";
+import { delay, type DelayMode } from "msw/utils/delay";
+import { setupServer } from "msw/node";
 
-export const server = setupServer(
-  http.get("/user", async ({ request, params }: { request: Request; params: PathParams }) => {
-    await delay();
-    return fetch(bypass(request));
-  }),
-  http.get("/health", () => passthrough()),
-);
+export const options: SharedOptions = { onUnhandledFrame: "bypass" };
+export const server = setupServer(http.get("/user", () => new Response()));
