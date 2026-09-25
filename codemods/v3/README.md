@@ -8,6 +8,7 @@ This codemod migrates your project from MSW v2 to v3, handling the following bre
 6. Renames the `onUnhandledRequest` option to `onUnhandledFrame` and migrates custom callbacks to the `{ frame, defaults }` signature
 7. Renames the `connection` life-cycle event to `websocket:connection`
 8. Replaces `msw/native` with `@msw/react-native` (`setupServer()` becomes the `network` object)
+9. Awaits `worker.stop()` and makes the enclosing function `async` if needed
 
 ### Example
 
@@ -69,6 +70,8 @@ server.listen({
 
 ⚠️ **React Native**: The `msw/native` migration rewrites `server.listen()` and `server.close()` only in the file that calls `setupServer()`. Update the usages in other files manually: `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()`, and `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
 
+⚠️ **`worker.stop()`**: The codemod awaits the `worker.stop()` statements for the worker created via `setupWorker()` in the same file or named `worker`. Statements that already return or await the call are left as they are. Update the other worker names manually.
+
 ⚠️ **`graphql` peer dependency**: `graphql` is now an optional peer dependency. Install it if you use `msw/graphql`.
 
 ### Manual Migration
@@ -77,7 +80,6 @@ The following changes cannot be safely automated. Review them after running the 
 
 - MSW v3 is ESM-only and requires Node.js 22+ and TypeScript 5.9+.
 - Run `npx msw init` to (re)generate the worker script. The `postinstall` hook is removed.
-- `worker.stop()` now returns a Promise. Await it if you rely on in-flight requests being handled.
 - `handleRequest()` is removed. Use the `defineNetwork()` API from `msw/experimental` instead.
 - `onUnhandledRequest()`, `UnhandledRequestStrategy`, `UnhandledRequestCallback`, `LifeCycleEventsMap`, `SetupApi`, and `StrictResponse` are no longer exported.
 - `request.headers.get('cookie')` returns `null` in the handlers. Use the `cookies` resolver argument instead.

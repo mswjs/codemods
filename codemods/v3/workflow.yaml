@@ -40,3 +40,10 @@ nodes:
             - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
+      - name: "Worker stop"
+        js-ast-grep:
+          js_file: scripts/worker-stop.ts
+          exclude:
+            - "**/*.cjs"
+            - "**/*.md"
+            - "**/*.txt"
