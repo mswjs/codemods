@@ -1,21 +1,26 @@
 {
-  "name": "msw-codemods",
-  "private": true,
-  "version": "1.0.0",
-  "description": "Official MSW codemods to help users adopt new features and handle breaking changes with ease",
-  "type": "module",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/codemod/msw-codemods.git"
-  },
-  "keywords": ["msw", "codemod", "migration", "mock-service-worker"],
-  "scripts": {
-    "lint": "npx -y @biomejs/biome lint .",
-    "format": "npx -y @biomejs/biome format --write .",
-    "typecheck": "tsc --noEmit"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.4"
-  }
+	"name": "msw-codemods",
+	"type": "module",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Official MSW codemods to help users adopt new features and handle breaking changes with ease",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/codemod/msw-codemods.git"
+	},
+	"keywords": [
+		"msw",
+		"codemod",
+		"migration",
+		"mock-service-worker"
+	],
+	"scripts": {
+		"lint": "npx -y @biomejs/biome lint .",
+		"format": "npx -y @biomejs/biome format --write .",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@codemod.com/jssg-types": "^1.6.3",
+		"typescript": "^7.0.2"
+	}
 }
-
