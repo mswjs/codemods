@@ -1,7 +1,12 @@
 import type { Edit } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
-import { resolveDefinition, resolvesToServerOrWorker, safeReferences, sameFile } from "../utils/bindings.ts";
+import {
+	resolveDefinition,
+	resolvesToServerOrWorker,
+	safeReferences,
+	sameFile,
+} from "../utils/bindings.ts";
 import { getFileStyle, getLineIndent, type FileStyle } from "../utils/formatting.ts";
 import { ensureNamedImport, type Node } from "../utils/imports.ts";
 import { count } from "../utils/metrics.ts";
@@ -21,8 +26,19 @@ const NEXT_OPTION_NAME = "onUnhandledFrame";
  * `references()` on an export walks the workspace, so this step must not do
  * that for every function. The listen/start site resolves the one callback
  * and stashes its rewritten source for the other file.
+ *
+ * Several callbacks can share that file. Each rewrite has to be applied to
+ * the original tree and published once. A second publish computed on its own
+ * replaces the first, and a dry-run never writes the first result back.
  */
 const pendingSources = new Map<string, string>();
+
+interface PendingCallback {
+	container: Node;
+	callback: Node;
+}
+
+const pendingCallbacks = new Map<string, Array<PendingCallback>>();
 
 const PRINT_METHOD_RENAMES = new Map<string, string>([
 	["warning", "warn"],
@@ -201,10 +217,6 @@ function isCallback(node: Node): boolean {
 	return node.kind() === "arrow_function" || node.kind() === "function_expression";
 }
 
-function enclosingCall(node: Node): Node | null {
-	return node.ancestors().find((ancestor) => ancestor.kind() === "call_expression") ?? null;
-}
-
 function isListenOrStart(call: Node): boolean {
 	const callee = call.field("function");
 
@@ -226,10 +238,43 @@ function isListenOrStart(call: Node): boolean {
 	return resolvesToServerOrWorker(object);
 }
 
+/**
+ * The property has to sit on the object passed to `listen` or `start`.
+ * A nested object, including one inside the callback body, is a different value.
+ */
 function isMswOption(node: Node): boolean {
-	const call = enclosingCall(node);
+	const object = node.parent();
 
-	return call !== null && isListenOrStart(call);
+	if (!object || object.kind() !== "object") {
+		return false;
+	}
+
+	let current: Node | null = object.parent();
+
+	while (current) {
+		if (current.kind() === "arguments") {
+			const call = current.parent();
+
+			if (!call || call.kind() !== "call_expression") {
+				return false;
+			}
+
+			return isListenOrStart(call);
+		}
+
+		if (
+			current.kind() === "parenthesized_expression" ||
+			current.kind() === "as_expression" ||
+			current.kind() === "satisfies_expression"
+		) {
+			current = current.parent();
+			continue;
+		}
+
+		return false;
+	}
+
+	return false;
 }
 
 function importSpecifierOf(node: Node): Node | null {
@@ -306,7 +351,10 @@ function isOptionReference(node: Node): boolean {
 	const parent = node.parent();
 
 	if (parent?.kind() === "pair" && parent.field("value")?.id() === node.id()) {
-		const key = parent.field("key")?.text().replace(/^['"]|['"]$/g, "");
+		const key = parent
+			.field("key")
+			?.text()
+			.replace(/^['"]|['"]$/g, "");
 
 		if (key !== LEGACY_OPTION_NAME) {
 			return false;
@@ -363,19 +411,56 @@ function fileRootOf(node: Node): FileRoot {
 	return node.getRoot() as unknown as FileRoot;
 }
 
-function rewrittenCallbackSource(container: Node, callback: Node): string | null {
-	const program = fileRootOf(callback).root();
-	const style = getFileStyle(program);
-	const result = transformCallback(program, container, callback, style);
+function queueExternalCallback(container: Node, callback: Node): void {
+	const filename = fileRootOf(callback).filename();
+	const queued = pendingCallbacks.get(filename) ?? [];
+	const start = callback.range().start.index;
 
-	if (!result) {
+	if (queued.some((item) => item.callback.range().start.index === start)) {
+		return;
+	}
+
+	queued.push({ container, callback });
+	pendingCallbacks.set(filename, queued);
+}
+
+function rewrittenCallbacksSource(callbacks: Array<PendingCallback>): string | null {
+	const first = callbacks[0];
+
+	if (!first) {
 		return null;
 	}
 
-	const edits = [...result.edits];
+	const program = fileRootOf(first.callback).root();
+	const style = getFileStyle(program);
+	const edits: Array<Edit> = [];
+	let usesFrameClass = false;
+	const seen = new Set<number>();
 
-	if (result.usesFrameClass) {
+	for (const { container, callback } of callbacks) {
+		const start = callback.range().start.index;
+
+		if (seen.has(start)) {
+			continue;
+		}
+
+		const result = transformCallback(program, container, callback, style);
+
+		if (!result) {
+			continue;
+		}
+
+		seen.add(start);
+		edits.push(...result.edits);
+		usesFrameClass = usesFrameClass || result.usesFrameClass;
+	}
+
+	if (usesFrameClass) {
 		edits.push(...ensureNamedImport(program, "msw/experimental", "HttpNetworkFrame"));
+	}
+
+	if (edits.length === 0) {
+		return null;
 	}
 
 	const next = program.commitEdits(edits);
@@ -483,26 +568,17 @@ async function transform(root: SgRoot<TSX>): Promise<string | null> {
 				continue;
 			}
 
+			const container =
+				referenced.callback.kind() === "function_declaration"
+					? referenced.callback
+					: (referenced.callback.parent() ?? referenced.callback);
+
 			if (sameFile(referenced.callback, filename)) {
-				const container =
-					referenced.callback.kind() === "function_declaration"
-						? referenced.callback
-						: (referenced.callback.parent() ?? referenced.callback);
 				applyCallback(container, referenced.callback);
 				continue;
 			}
 
-			const nextSource = rewrittenCallbackSource(
-				referenced.callback.kind() === "function_declaration"
-					? referenced.callback
-					: (referenced.callback.parent() ?? referenced.callback),
-				referenced.callback,
-			);
-
-			if (nextSource) {
-				await publishCallbackFile(referenced.callback, nextSource);
-			}
-
+			queueExternalCallback(container, referenced.callback);
 			continue;
 		}
 
@@ -553,6 +629,19 @@ async function transform(root: SgRoot<TSX>): Promise<string | null> {
 
 	if (usesFrameClass) {
 		edits.push(...ensureNamedImport(rootNode, "msw/experimental", "HttpNetworkFrame"));
+	}
+
+	const queued = [...pendingCallbacks.values()];
+	pendingCallbacks.clear();
+
+	for (const callbacks of queued) {
+		const nextSource = rewrittenCallbacksSource(callbacks);
+
+		const callback = callbacks[0]?.callback;
+
+		if (nextSource && callback) {
+			await publishCallbackFile(callback, nextSource);
+		}
 	}
 
 	if (edits.length === 0) {

@@ -68,7 +68,7 @@ server.listen({
 
 ⚠️ **Custom `onUnhandledRequest` values**: A callback passed by reference (`onUnhandledRequest: handleUnhandled`, including a function defined in another file) is rewritten when that function is only used as the `listen` or `start` option. A function that is also called elsewhere is left unchanged, and those call sites still need a manual update to the `({ frame, defaults })` signature.
 
-⚠️ **React Native**: `server.listen()` and `server.close()` are rewritten on references of the binding created by `setupServer()`, including calls in other project files. `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()`, and `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
+⚠️ **React Native**: `server.listen()` and `server.close()` are rewritten on references of the binding created by `setupServer()`, including calls in other project files. `onUnhandledRequest` is renamed before that rewrite, so `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()` with `onUnhandledFrame` already in place. `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
 
 ⚠️ **`worker.stop()`**: The codemod awaits `stop()` when the receiver's definition is `setupWorker()`, including a binding imported from another file. A variable that is only named `worker` is left alone. Statements that already return or await the call are left as they are. A generator, constructor, or accessor is left alone because it cannot be made `async`.
 

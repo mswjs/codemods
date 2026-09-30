@@ -5,6 +5,15 @@ nodes:
     name: Apply AST Transformations for MSW v3 upgrade
     type: automatic
     steps:
+      - name: "Unhandled frame"
+        js-ast-grep:
+          js_file: scripts/unhandled-frame.ts
+          semantic_analysis: workspace
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
+          exclude:
+            - "**/*.md"
+            - "**/*.txt"
       - name: "React Native"
         js-ast-grep:
           js_file: scripts/react-native.ts
@@ -27,15 +36,6 @@ nodes:
         js-ast-grep:
           js_file: scripts/graphql-link.ts
           semantic_analysis: file
-          include:
-            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
-          exclude:
-            - "**/*.md"
-            - "**/*.txt"
-      - name: "Unhandled frame"
-        js-ast-grep:
-          js_file: scripts/unhandled-frame.ts
-          semantic_analysis: workspace
           include:
             - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
