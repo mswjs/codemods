@@ -1,8 +1,11 @@
-import type { Edit } from "@codemod.com/jssg-types/main";
+import type { Edit, SgNode } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
+import { getAllImports } from "@jssg/utils/javascript/imports";
+import { resolvesToFactory, safeReferences } from "../utils/bindings.ts";
 import { getFileStyle, getLineIndent, indentText, type FileStyle } from "../utils/formatting.ts";
 import { getImports, renderImport, type Node } from "../utils/imports.ts";
+import { count } from "../utils/metrics.ts";
 
 /**
  * The "msw/native" entrypoint is removed in favor of "@msw/react-native".
@@ -95,18 +98,19 @@ function getEnclosingStatement(node: Node): Node | null {
 	return null;
 }
 
-async function transform(root: SgRoot<TSX>): Promise<string> {
+async function transform(root: SgRoot<TSX>): Promise<string | null> {
 	const rootNode = root.root();
-	const legacyImports = getImports(rootNode, [LEGACY_SOURCE]);
-
-	if (legacyImports.length === 0) {
-		return rootNode.text();
-	}
-
+	const filename = root.filename();
 	const style = getFileStyle(rootNode);
 	const semicolon = style.semicolon;
 	const edits: Array<Edit> = [];
-	const networkNames = new Set<string>();
+	const legacyImports = getImports(rootNode, [LEGACY_SOURCE]);
+	const setupBindings = getAllImports(rootNode as SgNode<TSX, "program">, {
+		type: "named",
+		name: "setupServer",
+		from: LEGACY_SOURCE,
+	});
+	const bindingByAlias = new Map(setupBindings.map((binding) => [binding.alias, binding.node]));
 
 	for (const importInfo of legacyImports) {
 		const setupServerSpecifiers = importInfo.specifiers.filter((specifier) => {
@@ -120,7 +124,6 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		const otherSpecifiers = importInfo.specifiers.filter((specifier) => {
 			return !setupServerSpecifiers.includes(specifier);
 		});
-
 		const statements: Array<string> = [
 			renderImport({
 				source: NEXT_SOURCE,
@@ -132,7 +135,6 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		];
 
 		if (otherSpecifiers.length > 0) {
-			// Leave the unknown imports for the manual migration.
 			statements.push(
 				renderImport({
 					source: LEGACY_SOURCE,
@@ -145,100 +147,135 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		}
 
 		edits.push(importInfo.node.replace(statements.join("\n")));
-		networkNames.add(NETWORK_NAME);
+		count({
+			transform: "react-native",
+			change: "import",
+		});
 
 		for (const specifier of setupServerSpecifiers) {
-			const setupServerCalls = rootNode.findAll({
-				rule: {
-					kind: "call_expression",
-					has: {
-						field: "function",
-						kind: "identifier",
-						regex: `^${specifier.localName}$`,
-					},
-				},
-			});
+			const binding = bindingByAlias.get(specifier.localName);
 
-			for (const setupServerCall of setupServerCalls) {
-				const declarator = setupServerCall.parent();
+			if (!binding) {
+				continue;
+			}
 
-				if (declarator?.kind() !== "variable_declarator") {
-					const indent = getLineIndent(rootNode, setupServerCall);
-					const configureText = renderConfigureHandlers(setupServerCall, indent, style);
-					const replacement = configureText ? `(${configureText}, ${NETWORK_NAME})` : NETWORK_NAME;
-					edits.push(setupServerCall.replace(replacement));
+			for (const file of safeReferences(binding)) {
+				if (file.root.filename() !== filename) {
 					continue;
 				}
 
-				const nameNode = declarator.field("name");
+				for (const reference of file.nodes) {
+					const setupServerCall = reference.parent();
 
-				if (nameNode && nameNode.kind() === "identifier") {
-					networkNames.add(nameNode.text());
-				}
+					if (
+						setupServerCall?.kind() !== "call_expression" ||
+						setupServerCall.field("function")?.id() !== reference.id()
+					) {
+						continue;
+					}
 
-				edits.push(setupServerCall.replace(NETWORK_NAME));
+					const declarator = setupServerCall.parent();
 
-				const statement = getEnclosingStatement(declarator);
+					if (declarator?.kind() !== "variable_declarator") {
+						const indent = getLineIndent(rootNode, setupServerCall);
+						const configureText = renderConfigureHandlers(setupServerCall, indent, style);
+						const replacement = configureText
+							? `(${configureText}, ${NETWORK_NAME})`
+							: NETWORK_NAME;
+						edits.push(setupServerCall.replace(replacement));
+						count({
+							transform: "react-native",
+							change: "setup-server",
+						});
+						continue;
+					}
 
-				if (!statement) {
-					continue;
-				}
-
-				const indent = getLineIndent(rootNode, statement);
-				const configureText = renderConfigureHandlers(setupServerCall, indent, style);
-
-				if (configureText) {
-					const insertAt = statement.range().end.index;
-
-					edits.push({
-						startPos: insertAt,
-						endPos: insertAt,
-						insertedText: `\n${indent}${configureText}${semicolon}`,
+					edits.push(setupServerCall.replace(NETWORK_NAME));
+					count({
+						transform: "react-native",
+						change: "setup-server",
 					});
+
+					const statement = getEnclosingStatement(declarator);
+
+					if (!statement) {
+						continue;
+					}
+
+					const indent = getLineIndent(rootNode, statement);
+					const configureText = renderConfigureHandlers(setupServerCall, indent, style);
+
+					if (configureText) {
+						const insertAt = statement.range().end.index;
+
+						edits.push({
+							startPos: insertAt,
+							endPos: insertAt,
+							insertedText: `\n${indent}${configureText}${semicolon}`,
+						});
+					}
 				}
 			}
 		}
 	}
 
-	for (const networkName of networkNames) {
-		const methodCalls = rootNode.findAll({
-			rule: {
-				kind: "call_expression",
-				has: {
-					field: "function",
-					kind: "member_expression",
-					pattern: `${networkName}.$METHOD`,
-				},
+	const methodCalls = rootNode.findAll({
+		rule: {
+			kind: "call_expression",
+			has: {
+				field: "function",
+				kind: "member_expression",
+				pattern: "$OBJECT.$METHOD",
 			},
-		});
+		},
+	});
 
-		for (const methodCall of methodCalls) {
-			const memberExpression = methodCall.field("function");
-			const property = memberExpression?.field("property");
-			const renamedTo = property ? METHOD_RENAMES.get(property.text()) : undefined;
+	for (const methodCall of methodCalls) {
+		const object = methodCall.getMatch("OBJECT");
+		const method = methodCall.getMatch("METHOD");
+		const memberExpression = methodCall.field("function");
+		const property = memberExpression?.field("property");
+		const renamedTo = method ? METHOD_RENAMES.get(method.text()) : undefined;
 
-			if (!property || !renamedTo) {
-				continue;
-			}
-
-			const optionsText = getArgumentsText(methodCall);
-
-			if (property.text() !== "listen" || optionsText === "") {
-				edits.push(property.replace(renamedTo));
-				continue;
-			}
-
-			const configureCall = `${networkName}.configure(${optionsText})`;
-			const enableCall = `${networkName}.enable()`;
-			const parent = methodCall.parent();
-
-			if (parent && parent.kind() === "expression_statement") {
-				const indent = getLineIndent(rootNode, parent);
-				edits.push(methodCall.replace(`${configureCall}${semicolon}\n${indent}${enableCall}`));
-			} else {
-				edits.push(methodCall.replace(`(${configureCall}, ${enableCall})`));
-			}
+		if (!object || !property || !renamedTo || object.kind() !== "identifier") {
+			continue;
 		}
+
+		if (!resolvesToFactory(object, "setupServer", [LEGACY_SOURCE])) {
+			continue;
+		}
+
+		const receiver = object.text();
+		const optionsText = getArgumentsText(methodCall);
+
+		if (property.text() !== "listen" || optionsText === "") {
+			edits.push(property.replace(renamedTo));
+			count({
+				transform: "react-native",
+				change: property.text() === "listen" ? "listen" : "close",
+			});
+			continue;
+		}
+
+		const configureCall = `${receiver}.configure(${optionsText})`;
+		const enableCall = `${receiver}.enable()`;
+		const parent = methodCall.parent();
+
+		if (parent && parent.kind() === "expression_statement") {
+			const indent = getLineIndent(rootNode, parent);
+			edits.push(methodCall.replace(`${configureCall}${semicolon}\n${indent}${enableCall}`));
+		} else {
+			edits.push(methodCall.replace(`(${configureCall}, ${enableCall})`));
+		}
+
+		count({
+			transform: "react-native",
+			change: "listen",
+		});
+	}
+
+	if (edits.length === 0) {
+		return null;
 	}
 
 	return rootNode.commitEdits(edits);

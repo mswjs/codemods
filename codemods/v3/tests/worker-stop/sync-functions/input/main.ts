@@ -13,13 +13,13 @@ export const cleanup = {
   stop() {
     worker.stop();
   },
-  static run() {
+  run() {
     worker.stop();
   },
 };
 
 class Harness {
-  static async stop() {
+  static stop() {
     worker.stop();
   }
 

@@ -66,11 +66,11 @@ server.listen({
 
 ⚠️ **Unhandled WebSocket connections**: The migrated `onUnhandledFrame` callback only handles HTTP frames. In v2, the callback received a synthetic `Request` for unhandled WebSocket connections. Extend the `frame instanceof HttpNetworkFrame` check if you need to react to WebSocket frames.
 
-⚠️ **Custom `onUnhandledRequest` values**: The codemod migrates inline callbacks only. If you pass a callback reference (e.g. `onUnhandledRequest: handleUnhandled`), update that function to the new `({ frame, defaults }) => void` signature manually.
+⚠️ **Custom `onUnhandledRequest` values**: A callback passed by reference (`onUnhandledRequest: handleUnhandled`, including a function defined in another file) is rewritten when that function is only used as the `listen` or `start` option. A function that is also called elsewhere is left unchanged, and those call sites still need a manual update to the `({ frame, defaults })` signature.
 
-⚠️ **React Native**: The `msw/native` migration rewrites `server.listen()` and `server.close()` only in the file that calls `setupServer()`. Update the usages in other files manually: `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()`, and `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
+⚠️ **React Native**: `server.listen()` and `server.close()` are rewritten on references of the binding created by `setupServer()`, including calls in other project files. `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()`, and `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
 
-⚠️ **`worker.stop()`**: The codemod awaits the `worker.stop()` statements for the worker created via `setupWorker()` in the same file or named `worker`. Statements that already return or await the call are left as they are. Update the other worker names manually.
+⚠️ **`worker.stop()`**: The codemod awaits `stop()` when the receiver's definition is `setupWorker()`, including a binding imported from another file. A variable that is only named `worker` is left alone. Statements that already return or await the call are left as they are. A generator, constructor, or accessor is left alone because it cannot be made `async`.
 
 ⚠️ **`graphql` peer dependency**: `graphql` is now an optional peer dependency. Install it if you use `msw/graphql`.
 

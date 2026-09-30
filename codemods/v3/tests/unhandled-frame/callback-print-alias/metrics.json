@@ -1,0 +1,11 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "shape": "method",
+        "transform": "unhandled-frame"
+      },
+      "count": 1
+    }
+  ]
+}

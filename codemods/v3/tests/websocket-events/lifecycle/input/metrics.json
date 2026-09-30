@@ -1,0 +1,20 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "event": "connection",
+        "method": "on",
+        "transform": "websocket-events"
+      },
+      "count": 2
+    },
+    {
+      "cardinality": {
+        "event": "connection",
+        "method": "removeListener",
+        "transform": "websocket-events"
+      },
+      "count": 1
+    }
+  ]
+}

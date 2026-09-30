@@ -1,0 +1,32 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "close",
+        "transform": "react-native"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "import",
+        "transform": "react-native"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "listen",
+        "transform": "react-native"
+      },
+      "count": 2
+    },
+    {
+      "cardinality": {
+        "change": "setup-server",
+        "transform": "react-native"
+      },
+      "count": 2
+    }
+  ]
+}

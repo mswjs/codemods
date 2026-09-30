@@ -8,42 +8,54 @@ nodes:
       - name: "React Native"
         js-ast-grep:
           js_file: scripts/react-native.ts
+          semantic_analysis: workspace
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
       - name: "Imports"
         js-ast-grep:
           js_file: scripts/imports.ts
+          semantic_analysis: file
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
       - name: "GraphQL link"
         js-ast-grep:
           js_file: scripts/graphql-link.ts
+          semantic_analysis: file
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
       - name: "Unhandled frame"
         js-ast-grep:
           js_file: scripts/unhandled-frame.ts
+          semantic_analysis: workspace
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
       - name: "WebSocket events"
         js-ast-grep:
           js_file: scripts/websocket-events.ts
+          semantic_analysis: workspace
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"
       - name: "Worker stop"
         js-ast-grep:
           js_file: scripts/worker-stop.ts
+          semantic_analysis: workspace
+          include:
+            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
           exclude:
-            - "**/*.cjs"
             - "**/*.md"
             - "**/*.txt"

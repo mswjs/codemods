@@ -9,6 +9,7 @@ import {
 	type ImportInfo,
 	type SpecifierText,
 } from "../utils/imports.ts";
+import { count } from "../utils/metrics.ts";
 
 const ROOT_ENTRYPOINT = "msw";
 
@@ -148,9 +149,21 @@ function planImport(importInfo: ImportInfo, edits: Array<Edit>, rootNode: SgRoot
 		if (renamedTo) {
 			hasRenamedSpecifiers = true;
 
+			count({
+				transform: "imports",
+				change: "rename",
+				symbol: specifier.importedName,
+				from: specifier.importedName,
+				to: renamedTo,
+			});
+
 			// A non-aliased import changes its local binding, rename the usages too.
 			if (specifier.localName === specifier.importedName) {
-				edits.push(...renameReferences(rootNode, specifier.localName, renamedTo));
+				const binding = specifier.node.field("alias") ?? specifier.node.field("name");
+
+				if (binding) {
+					edits.push(...renameReferences(binding, renamedTo, rootNode.getRoot().filename()));
+				}
 			}
 
 			nextSpecifier = {
@@ -164,6 +177,17 @@ function planImport(importInfo: ImportInfo, edits: Array<Edit>, rootNode: SgRoot
 			targetSource === ROOT_ENTRYPOINT
 				? (EXPORT_ENTRYPOINTS.get(nextSpecifier.importedName) ?? ROOT_ENTRYPOINT)
 				: targetSource;
+
+		if (entrypoint !== importInfo.source) {
+			count({
+				transform: "imports",
+				change: "move",
+				symbol: nextSpecifier.importedName,
+				from: importInfo.source,
+				to: entrypoint,
+			});
+		}
+
 		const group = groups.get(entrypoint) ?? [];
 
 		group.push(nextSpecifier);
@@ -223,6 +247,13 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		const { importInfo } = plan;
 
 		if (importInfo.specifiers.length === 0) {
+			count({
+				transform: "imports",
+				change: "move",
+				symbol: plan.targetSource,
+				from: importInfo.source,
+				to: plan.targetSource,
+			});
 			edits.push(
 				importInfo.sourceNode.replace(`${importInfo.quote}${plan.targetSource}${importInfo.quote}`),
 			);

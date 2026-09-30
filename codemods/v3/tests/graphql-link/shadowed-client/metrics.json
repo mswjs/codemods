@@ -1,0 +1,11 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "method": "query",
+        "transform": "graphql-link"
+      },
+      "count": 1
+    }
+  ]
+}

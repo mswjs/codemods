@@ -1,5 +1,6 @@
 import type { Edit, SgNode } from "@codemod.com/jssg-types/main";
 import type TSX from "codemod:ast-grep/langs/tsx";
+import { addImport, getAllImports } from "@jssg/utils/javascript/imports";
 import { getFileStyle } from "./formatting.ts";
 
 export type Node = SgNode<TSX>;
@@ -121,11 +122,15 @@ export function getLocalNames(
 ): Array<string> {
 	const localNames: Array<string> = [];
 
-	for (const importInfo of getImports(root, sources)) {
-		for (const specifier of importInfo.specifiers) {
-			if (specifier.importedName === importedName && !specifier.isTypeOnly) {
-				localNames.push(specifier.localName);
-			}
+	for (const source of sources) {
+		const found = getAllImports(root as SgNode<TSX, "program">, {
+			type: "named",
+			name: importedName,
+			from: source,
+		});
+
+		for (const match of found) {
+			localNames.push(match.alias);
 		}
 	}
 
@@ -170,82 +175,65 @@ export function renderImport(options: RenderImportOptions): string {
  * after the last import in the file.
  */
 export function ensureNamedImport(root: Node, source: string, importedName: string): Array<Edit> {
-	const existingImports = getImports(root, [source]);
+	const edit = addImport(root as SgNode<TSX, "program">, {
+		type: "named",
+		specifiers: [{ name: importedName }],
+		from: source,
+	});
 
-	for (const existing of existingImports) {
-		const alreadyImported = existing.specifiers.some((specifier) => {
-			return specifier.importedName === importedName;
-		});
+	if (!edit) {
+		return [];
+	}
 
-		if (alreadyImported) {
-			return [];
-		}
+	// addImport merges into an existing clause without rewriting its quotes.
+	// A brand-new statement always uses single quotes and a semicolon, so restyle it.
+	if (!edit.insertedText.includes("import ")) {
+		return [edit];
 	}
 
 	const style = getFileStyle(root);
-	const reusable = existingImports.find((existing) => {
-		return existing.namedImportsNode !== null && !existing.isTypeOnly;
-	});
-
-	if (reusable?.namedImportsNode) {
-		const specifiers: Array<SpecifierText> = [
-			...reusable.specifiers,
-			{ importedName, localName: importedName, isTypeOnly: false },
-		];
-		const specifiersText = specifiers.map(formatSpecifier).join(", ");
-
-		return [reusable.namedImportsNode.replace(`{ ${specifiersText} }`)];
-	}
-
-	const newImport = renderImport({
+	const statement = renderImport({
 		source,
 		quote: style.quote,
 		isTypeOnly: false,
 		hasSemicolon: style.semicolon === ";",
 		specifiers: [{ importedName, localName: importedName, isTypeOnly: false }],
 	});
-
-	const allImports = getImports(root);
-	const lastImport = allImports[allImports.length - 1];
-
-	if (lastImport) {
-		const insertAt = lastImport.node.range().end.index;
-
-		return [
-			{
-				startPos: insertAt,
-				endPos: insertAt,
-				insertedText: `\n${newImport}`,
-			},
-		];
-	}
+	const prefix = edit.insertedText.startsWith("\n") ? "\n" : "";
+	const suffix = edit.insertedText.endsWith("\n") ? "\n" : "";
 
 	return [
 		{
-			startPos: 0,
-			endPos: 0,
-			insertedText: `${newImport}\n\n`,
+			startPos: edit.startPos,
+			endPos: edit.endPos,
+			insertedText: `${prefix}${statement}${suffix}`,
 		},
 	];
 }
 
 /**
- * Renames all references to the given identifier outside of import statements.
+ * Renames references of one binding. Shadowed names with the same spelling stay put.
  */
-export function renameReferences(root: Node, fromName: string, toName: string): Array<Edit> {
-	const references = root.findAll({
-		rule: {
-			any: [{ kind: "identifier" }, { kind: "type_identifier" }],
-			regex: `^${fromName}$`,
-			not: {
-				inside: {
-					kind: "import_statement",
-				},
-			},
-		},
-	});
+export function renameReferences(binding: Node, toName: string, currentFile: string): Array<Edit> {
+	const edits: Array<Edit> = [];
 
-	return references.map((reference) => {
-		return reference.replace(toName);
-	});
+	let references: ReturnType<Node["references"]> = [];
+
+	try {
+		references = binding.references();
+	} catch {
+		references = [];
+	}
+
+	for (const file of references) {
+		if (file.root.filename() !== currentFile) {
+			continue;
+		}
+
+		for (const reference of file.nodes) {
+			edits.push(reference.replace(toName));
+		}
+	}
+
+	return edits;
 }

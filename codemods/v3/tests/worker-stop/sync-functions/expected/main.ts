@@ -13,7 +13,7 @@ export const cleanup = {
   async stop() {
     await worker.stop();
   },
-  static async run() {
+  async run() {
     await worker.stop();
   },
 };

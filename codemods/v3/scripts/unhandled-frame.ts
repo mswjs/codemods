@@ -1,8 +1,10 @@
 import type { Edit } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
+import { resolveDefinition, resolvesToServerOrWorker, safeReferences } from "../utils/bindings.ts";
 import { getFileStyle, getLineIndent, type FileStyle } from "../utils/formatting.ts";
 import { ensureNamedImport, type Node } from "../utils/imports.ts";
+import { count } from "../utils/metrics.ts";
 
 /**
  * The `onUnhandledRequest` option is renamed to `onUnhandledFrame`.
@@ -66,11 +68,15 @@ function getParameterNames(parametersNode: Node): Array<string> | null {
 	return names;
 }
 
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function hasIdentifierReference(scope: Node, name: string, ignoredNodes: Array<Node>): boolean {
 	const references = scope.findAll({
 		rule: {
 			kind: "identifier",
-			regex: `^${name}$`,
+			regex: `^${escapeRegex(name)}$`,
 		},
 	});
 
@@ -187,24 +193,198 @@ function isCallback(node: Node): boolean {
 	return node.kind() === "arrow_function" || node.kind() === "function_expression";
 }
 
-async function transform(root: SgRoot<TSX>): Promise<string> {
+function enclosingCall(node: Node): Node | null {
+	return node.ancestors().find((ancestor) => ancestor.kind() === "call_expression") ?? null;
+}
+
+function isListenOrStart(call: Node): boolean {
+	const callee = call.field("function");
+
+	if (!callee || callee.kind() !== "member_expression") {
+		return false;
+	}
+
+	const property = callee.field("property");
+	const object = callee.field("object");
+
+	if (!property || !object || object.kind() !== "identifier") {
+		return false;
+	}
+
+	if (property.text() !== "listen" && property.text() !== "start") {
+		return false;
+	}
+
+	return resolvesToServerOrWorker(object);
+}
+
+function isMswOption(node: Node): boolean {
+	const call = enclosingCall(node);
+
+	return call !== null && isListenOrStart(call);
+}
+
+function importSpecifierOf(node: Node): Node | null {
+	if (node.kind() === "import_specifier") {
+		return node;
+	}
+
+	const parent = node.parent();
+
+	if (parent?.kind() === "import_specifier") {
+		return parent;
+	}
+
+	return null;
+}
+
+function isExportMention(node: Node): boolean {
+	return node.kind() === "export_specifier" || node.parent()?.kind() === "export_specifier";
+}
+
+/**
+ * `references()` of a function stops at the import that brings it into
+ * another file. Uses in that file hang off the import's local name.
+ */
+function optionOnly(nameNode: Node): boolean {
+	const seen = new Set<number>();
+	const queue: Array<Node> = [nameNode];
+	let sawUse = false;
+
+	while (queue.length > 0) {
+		const current = queue.pop();
+
+		if (!current) {
+			continue;
+		}
+
+		for (const file of safeReferences(current)) {
+			for (const reference of file.nodes) {
+				if (seen.has(reference.id())) {
+					continue;
+				}
+
+				seen.add(reference.id());
+
+				if (isExportMention(reference)) {
+					continue;
+				}
+
+				const specifier = importSpecifierOf(reference);
+
+				if (specifier) {
+					const localName = specifier.field("alias") ?? specifier.field("name");
+
+					if (localName) {
+						queue.push(localName);
+					}
+
+					continue;
+				}
+
+				sawUse = true;
+
+				if (!isOptionReference(reference)) {
+					return false;
+				}
+			}
+		}
+	}
+
+	return sawUse;
+}
+
+function isOptionReference(node: Node): boolean {
+	const parent = node.parent();
+
+	if (parent?.kind() === "pair" && parent.field("value")?.id() === node.id()) {
+		const key = parent.field("key")?.text().replace(/^['"]|['"]$/g, "");
+
+		if (key !== LEGACY_OPTION_NAME) {
+			return false;
+		}
+
+		return isMswOption(parent);
+	}
+
+	if (node.kind() === "shorthand_property_identifier" && node.text() === LEGACY_OPTION_NAME) {
+		return isMswOption(node);
+	}
+
+	return false;
+}
+
+function referencedCallback(node: Node): { callback: Node; nameNode: Node } | null {
+	const resolved = resolveDefinition(node);
+
+	if (!resolved || resolved.kind() !== "identifier") {
+		return null;
+	}
+
+	const parent = resolved.parent();
+
+	if (parent?.kind() === "function_declaration") {
+		return { callback: parent, nameNode: resolved };
+	}
+
+	if (parent?.kind() === "variable_declarator") {
+		const value = parent.field("value");
+
+		if (value && isCallback(value)) {
+			return { callback: value, nameNode: resolved };
+		}
+	}
+
+	return null;
+}
+
+function recordShape(shape: string): void {
+	count({
+		transform: "unhandled-frame",
+		shape,
+	});
+}
+
+async function transform(root: SgRoot<TSX>): Promise<string | null> {
 	const rootNode = root.root();
 	const style = getFileStyle(rootNode);
-
 	const edits: Array<Edit> = [];
+	const rewrittenFunctions = new Set<number>();
 	let usesFrameClass = false;
+
+	const applyCallback = (container: Node, callback: Node): void => {
+		const start = callback.range().start.index;
+
+		if (rewrittenFunctions.has(start)) {
+			return;
+		}
+
+		const result = transformCallback(rootNode, container, callback, style);
+
+		if (!result) {
+			return;
+		}
+
+		rewrittenFunctions.add(start);
+		edits.push(...result.edits);
+		usesFrameClass = usesFrameClass || result.usesFrameClass;
+	};
 
 	const pairs = rootNode.findAll({
 		rule: {
 			kind: "pair",
 			has: {
 				field: "key",
-				regex: `^['"]?${LEGACY_OPTION_NAME}['"]?$`,
+				regex: `^['"]?${escapeRegex(LEGACY_OPTION_NAME)}['"]?$`,
 			},
 		},
 	});
 
 	for (const pair of pairs) {
+		if (!isMswOption(pair)) {
+			continue;
+		}
+
 		const keyNode = pair.field("key");
 		const valueNode = pair.field("value");
 
@@ -216,13 +396,20 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		edits.push(keyNode.replace(`${quote}${NEXT_OPTION_NAME}${quote}`));
 
 		if (isCallback(valueNode)) {
-			const result = transformCallback(rootNode, pair, valueNode, style);
-
-			if (result) {
-				edits.push(...result.edits);
-				usesFrameClass = usesFrameClass || result.usesFrameClass;
-			}
+			applyCallback(pair, valueNode);
+			recordShape("callback");
+			continue;
 		}
+
+		if (valueNode.kind() === "identifier") {
+			const referenced = referencedCallback(valueNode);
+			const onlyOption = referenced !== null && optionOnly(referenced.nameNode);
+
+			recordShape(onlyOption ? "callback" : "unresolved");
+			continue;
+		}
+
+		recordShape("strategy");
 	}
 
 	const methods = rootNode.findAll({
@@ -230,12 +417,16 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 			kind: "method_definition",
 			has: {
 				field: "name",
-				regex: `^${LEGACY_OPTION_NAME}$`,
+				regex: `^${escapeRegex(LEGACY_OPTION_NAME)}$`,
 			},
 		},
 	});
 
 	for (const method of methods) {
+		if (!isMswOption(method)) {
+			continue;
+		}
+
 		const nameNode = method.field("name");
 
 		if (!nameNode) {
@@ -243,28 +434,69 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 		}
 
 		edits.push(nameNode.replace(NEXT_OPTION_NAME));
-
-		const result = transformCallback(rootNode, method, method, style);
-
-		if (result) {
-			edits.push(...result.edits);
-			usesFrameClass = usesFrameClass || result.usesFrameClass;
-		}
+		applyCallback(method, method);
+		recordShape("method");
 	}
 
 	const shorthands = rootNode.findAll({
 		rule: {
 			kind: "shorthand_property_identifier",
-			regex: `^${LEGACY_OPTION_NAME}$`,
+			regex: `^${escapeRegex(LEGACY_OPTION_NAME)}$`,
 		},
 	});
 
 	for (const shorthand of shorthands) {
+		if (!isMswOption(shorthand)) {
+			continue;
+		}
+
 		edits.push(shorthand.replace(`${NEXT_OPTION_NAME}: ${LEGACY_OPTION_NAME}`));
+		recordShape("shorthand");
+	}
+
+	const declarations = rootNode.findAll({
+		rule: {
+			kind: "function_declaration",
+		},
+	});
+
+	for (const declaration of declarations) {
+		const nameNode = declaration.field("name");
+
+		if (!nameNode || !optionOnly(nameNode)) {
+			continue;
+		}
+
+		applyCallback(declaration, declaration);
+	}
+
+	const declarators = rootNode.findAll({
+		rule: {
+			kind: "variable_declarator",
+		},
+	});
+
+	for (const declarator of declarators) {
+		const nameNode = declarator.field("name");
+		const valueNode = declarator.field("value");
+
+		if (!nameNode || nameNode.kind() !== "identifier" || !valueNode || !isCallback(valueNode)) {
+			continue;
+		}
+
+		if (!optionOnly(nameNode)) {
+			continue;
+		}
+
+		applyCallback(declarator, valueNode);
 	}
 
 	if (usesFrameClass) {
 		edits.push(...ensureNamedImport(rootNode, "msw/experimental", "HttpNetworkFrame"));
+	}
+
+	if (edits.length === 0) {
+		return null;
 	}
 
 	return rootNode.commitEdits(edits);

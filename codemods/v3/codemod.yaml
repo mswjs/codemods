@@ -10,7 +10,7 @@ category: "migration"
 repository: "https://github.com/mswjs/codemods"
 
 targets:
-  languages: ["typescript"]
+  languages: ["javascript", "typescript"]
 
 keywords: ["breaking-change", "msw", "msw-v3", "msw-v2-to-v3"]
 
