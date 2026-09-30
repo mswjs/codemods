@@ -1,0 +1,44 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "HttpResponse",
+        "to": "msw/http",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "http",
+        "to": "msw/http",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "sse",
+        "to": "msw/sse",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "ws",
+        "to": "msw/ws",
+        "transform": "imports"
+      },
+      "count": 1
+    }
+  ]
+}

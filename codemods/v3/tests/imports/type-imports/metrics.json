@@ -1,0 +1,74 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "GraphQLLink",
+        "to": "msw/graphql",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "GraphQLQuery",
+        "to": "msw/graphql",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "GraphQLVariables",
+        "to": "msw/graphql",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "HttpHandler",
+        "to": "msw/http",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "HttpResponse",
+        "to": "msw/http",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "graphql",
+        "to": "msw/graphql",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "rename",
+        "from": "GraphQLLinkHandlers",
+        "symbol": "GraphQLLinkHandlers",
+        "to": "GraphQLLink",
+        "transform": "imports"
+      },
+      "count": 1
+    }
+  ]
+}

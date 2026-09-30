@@ -1,0 +1,12 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "outcome": "skipped",
+        "reason": "generator",
+        "transform": "worker-stop"
+      },
+      "count": 1
+    }
+  ]
+}

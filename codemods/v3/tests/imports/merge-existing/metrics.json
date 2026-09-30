@@ -1,0 +1,34 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "GraphQLQuery",
+        "to": "msw/graphql",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "HttpResponse",
+        "to": "msw/http",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "delay",
+        "to": "msw/utils/delay",
+        "transform": "imports"
+      },
+      "count": 1
+    }
+  ]
+}

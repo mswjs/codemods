@@ -1,0 +1,24 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "getCleanUrlString",
+        "to": "msw/utils/get-clean-url-string",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "rename",
+        "from": "cleanUrl",
+        "symbol": "cleanUrl",
+        "to": "getCleanUrlString",
+        "transform": "imports"
+      },
+      "count": 1
+    }
+  ]
+}

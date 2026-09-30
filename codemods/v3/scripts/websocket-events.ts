@@ -1,6 +1,8 @@
 import type { Edit } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
+import { resolvesToServerOrWorker } from "../utils/bindings.ts";
+import { count } from "../utils/metrics.ts";
 
 /**
  * The "connection" life-cycle event is renamed to "websocket:connection".
@@ -9,7 +11,7 @@ import type TSX from "codemod:ast-grep/langs/tsx";
  */
 const EVENT_RENAMES = new Map<string, string>([["connection", "websocket:connection"]]);
 
-async function transform(root: SgRoot<TSX>): Promise<string> {
+async function transform(root: SgRoot<TSX>): Promise<string | null> {
 	const rootNode = root.root();
 	const edits: Array<Edit> = [];
 
@@ -25,6 +27,8 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 	});
 
 	for (const eventCall of eventCalls) {
+		const emitter = eventCall.getMatch("EMITTER");
+		const method = eventCall.getMatch("METHOD");
 		const args = eventCall.field("arguments");
 		const eventName = args?.find({
 			rule: {
@@ -33,7 +37,11 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 			},
 		});
 
-		if (!eventName) {
+		if (!emitter || !method || !eventName || emitter.kind() !== "identifier") {
+			continue;
+		}
+
+		if (!resolvesToServerOrWorker(emitter)) {
 			continue;
 		}
 
@@ -42,7 +50,16 @@ async function transform(root: SgRoot<TSX>): Promise<string> {
 
 		if (renamedTo) {
 			edits.push(eventName.replace(`${quote}${renamedTo}${quote}`));
+			count({
+				transform: "websocket-events",
+				method: method.text(),
+				event: "connection",
+			});
 		}
+	}
+
+	if (edits.length === 0) {
+		return null;
 	}
 
 	return rootNode.commitEdits(edits);

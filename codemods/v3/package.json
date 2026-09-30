@@ -8,7 +8,10 @@
 		"typescript": "^7.0.2"
 	},
 	"scripts": {
-		"test": "for script in scripts/*.ts; do npx codemod@latest jssg test -l tsx \"$script\" \"tests/$(basename \"$script\" .ts)\" --disable-analytics || exit 1; done",
-		"check-types": "npx tsc --noEmit"
+		"test": "for script in scripts/*.ts; do npx codemod@latest jssg test -l tsx \"$script\" \"tests/$(basename \"$script\" .ts)\" --semantic-workspace --disable-analytics || exit 1; done",
+		"check-types": "npx tsc --noEmit -p tsconfig.check.json"
+	},
+	"dependencies": {
+		"@jssg/utils": "^0.0.10"
 	}
 }

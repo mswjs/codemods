@@ -1,0 +1,34 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "bypass",
+        "to": "msw/utils/bypass",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "delay",
+        "to": "msw/utils/delay",
+        "transform": "imports"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "change": "move",
+        "from": "msw",
+        "symbol": "passthrough",
+        "to": "msw/utils/passthrough",
+        "transform": "imports"
+      },
+      "count": 1
+    }
+  ]
+}

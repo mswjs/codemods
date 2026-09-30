@@ -1,0 +1,20 @@
+{
+  "msw-v3": [
+    {
+      "cardinality": {
+        "outcome": "async-added",
+        "reason": "sync-function",
+        "transform": "worker-stop"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "outcome": "awaited",
+        "reason": "discarded-promise",
+        "transform": "worker-stop"
+      },
+      "count": 1
+    }
+  ]
+}
