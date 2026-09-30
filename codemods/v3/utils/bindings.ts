@@ -1,7 +1,7 @@
 import type { Node } from "./imports.ts";
 
 const SETUP_WORKER_SOURCES = ["msw/browser"];
-const SETUP_SERVER_SOURCES = ["msw/node", "msw/native"];
+const SETUP_SERVER_SOURCES = ["msw/node"];
 const GRAPHQL_SOURCES = ["msw", "msw/graphql", "msw/core/graphql"];
 
 export interface ImportBinding {

@@ -7,8 +7,7 @@ This codemod migrates your project from MSW v2 to v3, handling the following bre
 5. Replaces the root-level `graphql.query()`, `graphql.mutation()`, and `graphql.operation()` with `graphql.link('*')`
 6. Renames the `onUnhandledRequest` option to `onUnhandledFrame` and migrates custom callbacks to the `{ frame, defaults }` signature
 7. Renames the `connection` life-cycle event to `websocket:connection`
-8. Replaces `msw/native` with `@msw/react-native` (`setupServer()` becomes the `network` object)
-9. Awaits `worker.stop()` and makes the enclosing function `async` if needed
+8. Awaits `worker.stop()` and makes the enclosing function `async` if needed
 
 ### Example
 
@@ -67,8 +66,6 @@ server.listen({
 ⚠️ **Unhandled WebSocket connections**: The migrated `onUnhandledFrame` callback only handles HTTP frames. In v2, the callback received a synthetic `Request` for unhandled WebSocket connections. Extend the `frame instanceof HttpNetworkFrame` check if you need to react to WebSocket frames.
 
 ⚠️ **Custom `onUnhandledRequest` values**: A callback passed by reference (`onUnhandledRequest: handleUnhandled`, including a function defined in another file) is rewritten when that function is only used as the `listen` or `start` option. A function that is also called elsewhere is left unchanged, and those call sites still need a manual update to the `({ frame, defaults })` signature.
-
-⚠️ **React Native**: `server.listen()` and `server.close()` are rewritten on references of the binding created by `setupServer()`, including calls in other project files. `onUnhandledRequest` is renamed before that rewrite, so `server.listen(options)` becomes `server.configure(options)` followed by `server.enable()` with `onUnhandledFrame` already in place. `server.close()` becomes `server.disable()`. Install `@msw/react-native` and import it before `msw`.
 
 ⚠️ **`worker.stop()`**: The codemod awaits `stop()` when the receiver's definition is `setupWorker()`, including a binding imported from another file. A variable that is only named `worker` is left alone. Statements that already return or await the call are left as they are. A generator, constructor, or accessor is left alone because it cannot be made `async`.
 

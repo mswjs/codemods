@@ -14,15 +14,6 @@ nodes:
           exclude:
             - "**/*.md"
             - "**/*.txt"
-      - name: "React Native"
-        js-ast-grep:
-          js_file: scripts/react-native.ts
-          semantic_analysis: workspace
-          include:
-            - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
-          exclude:
-            - "**/*.md"
-            - "**/*.txt"
       - name: "Imports"
         js-ast-grep:
           js_file: scripts/imports.ts
