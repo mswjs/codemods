@@ -1,7 +1,7 @@
 import type { Edit } from "@codemod.com/jssg-types/main";
 import type { SgRoot } from "codemod:ast-grep";
 import type TSX from "codemod:ast-grep/langs/tsx";
-import { resolveDefinition, resolvesToServerOrWorker, safeReferences } from "../utils/bindings.ts";
+import { resolveDefinition, resolvesToServerOrWorker, safeReferences, sameFile } from "../utils/bindings.ts";
 import { getFileStyle, getLineIndent, type FileStyle } from "../utils/formatting.ts";
 import { ensureNamedImport, type Node } from "../utils/imports.ts";
 import { count } from "../utils/metrics.ts";
@@ -15,6 +15,14 @@ import { count } from "../utils/metrics.ts";
  */
 const LEGACY_OPTION_NAME = "onUnhandledRequest";
 const NEXT_OPTION_NAME = "onUnhandledFrame";
+
+/**
+ * Full source of a callback file, keyed by the path `jssgTransform` will open.
+ * `references()` on an export walks the workspace, so this step must not do
+ * that for every function. The listen/start site resolves the one callback
+ * and stashes its rewritten source for the other file.
+ */
+const pendingSources = new Map<string, string>();
 
 const PRINT_METHOD_RENAMES = new Map<string, string>([
 	["warning", "warn"],
@@ -345,8 +353,72 @@ function recordShape(shape: string): void {
 	});
 }
 
+interface FileRoot {
+	filename(): string;
+	root(): Node;
+	write(content: string): void;
+}
+
+function fileRootOf(node: Node): FileRoot {
+	return node.getRoot() as unknown as FileRoot;
+}
+
+function rewrittenCallbackSource(container: Node, callback: Node): string | null {
+	const program = fileRootOf(callback).root();
+	const style = getFileStyle(program);
+	const result = transformCallback(program, container, callback, style);
+
+	if (!result) {
+		return null;
+	}
+
+	const edits = [...result.edits];
+
+	if (result.usesFrameClass) {
+		edits.push(...ensureNamedImport(program, "msw/experimental", "HttpNetworkFrame"));
+	}
+
+	const next = program.commitEdits(edits);
+
+	return next === program.text() ? null : next;
+}
+
+async function publishCallbackFile(callback: Node, nextSource: string): Promise<void> {
+	const fileRoot = fileRootOf(callback);
+	const filename = fileRoot.filename();
+
+	pendingSources.set(filename, nextSource);
+
+	try {
+		fileRoot.write(nextSource);
+	} catch {
+		// Dry-run rejects write(). The nested transform below still reports the file.
+	}
+
+	try {
+		const astGrep = (await import("codemod:ast-grep")) as unknown as {
+			jssgTransform?: (
+				transformFn: (root: SgRoot<TSX>) => Promise<string | null>,
+				pathToFile: string,
+				language: string,
+			) => Promise<string | null>;
+		};
+
+		await astGrep.jssgTransform?.(transform, filename, "tsx");
+	} catch {
+		// Engines without jssgTransform still apply through write().
+	}
+}
+
 async function transform(root: SgRoot<TSX>): Promise<string | null> {
+	const pending = pendingSources.get(root.filename());
+
+	if (pending) {
+		return pending;
+	}
+
 	const rootNode = root.root();
+	const filename = root.filename();
 	const style = getFileStyle(rootNode);
 	const edits: Array<Edit> = [];
 	const rewrittenFunctions = new Set<number>();
@@ -406,6 +478,31 @@ async function transform(root: SgRoot<TSX>): Promise<string | null> {
 			const onlyOption = referenced !== null && optionOnly(referenced.nameNode);
 
 			recordShape(onlyOption ? "callback" : "unresolved");
+
+			if (!referenced || !onlyOption) {
+				continue;
+			}
+
+			if (sameFile(referenced.callback, filename)) {
+				const container =
+					referenced.callback.kind() === "function_declaration"
+						? referenced.callback
+						: (referenced.callback.parent() ?? referenced.callback);
+				applyCallback(container, referenced.callback);
+				continue;
+			}
+
+			const nextSource = rewrittenCallbackSource(
+				referenced.callback.kind() === "function_declaration"
+					? referenced.callback
+					: (referenced.callback.parent() ?? referenced.callback),
+				referenced.callback,
+			);
+
+			if (nextSource) {
+				await publishCallbackFile(referenced.callback, nextSource);
+			}
+
 			continue;
 		}
 
@@ -452,43 +549,6 @@ async function transform(root: SgRoot<TSX>): Promise<string | null> {
 
 		edits.push(shorthand.replace(`${NEXT_OPTION_NAME}: ${LEGACY_OPTION_NAME}`));
 		recordShape("shorthand");
-	}
-
-	const declarations = rootNode.findAll({
-		rule: {
-			kind: "function_declaration",
-		},
-	});
-
-	for (const declaration of declarations) {
-		const nameNode = declaration.field("name");
-
-		if (!nameNode || !optionOnly(nameNode)) {
-			continue;
-		}
-
-		applyCallback(declaration, declaration);
-	}
-
-	const declarators = rootNode.findAll({
-		rule: {
-			kind: "variable_declarator",
-		},
-	});
-
-	for (const declarator of declarators) {
-		const nameNode = declarator.field("name");
-		const valueNode = declarator.field("value");
-
-		if (!nameNode || nameNode.kind() !== "identifier" || !valueNode || !isCallback(valueNode)) {
-			continue;
-		}
-
-		if (!optionOnly(nameNode)) {
-			continue;
-		}
-
-		applyCallback(declarator, valueNode);
 	}
 
 	if (usesFrameClass) {
